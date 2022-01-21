@@ -30,7 +30,7 @@ func (server *Server) createPost(ctx *gin.Context) {
 		Image:       req.Image,
 	}
 
-	post, err := server.db.CreatePost(ctx, arg)
+	post, err := server.store.CreatePostTx(ctx.Request.Context(), arg)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
 		return
@@ -50,7 +50,7 @@ func (server *Server) getPostById(ctx *gin.Context) {
 		return
 	}
 
-	post, err := server.db.GetPost(ctx, req.ID)
+	post, err := server.store.GetPost(ctx, req.ID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			ctx.JSON(http.StatusNotFound, errorResponse(err))
@@ -81,7 +81,7 @@ func (server *Server) listPost(ctx *gin.Context) {
 		Offset: (req.PageId - 1) * req.PageSize,
 	}
 
-	posts, err := server.db.ListPosts(ctx, arg)
+	posts, err := server.store.ListPosts(ctx, arg)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			ctx.JSON(http.StatusNotFound, errorResponse(err))
@@ -105,7 +105,7 @@ func (server *Server) deletePost(ctx *gin.Context) {
 		return
 	}
 
-	err := server.db.DeletePost(ctx, req.ID)
+	err := server.store.DeletePost(ctx, req.ID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			ctx.JSON(http.StatusNotFound, errorResponse(err))
@@ -149,8 +149,7 @@ func (server *Server) updatePost(ctx *gin.Context) {
 		Description: reqBody.Description,
 		Image:       reqBody.Image,
 	}
-
-	post, err := server.db.UpdatePost(ctx, arg)
+	post, err := server.store.UpdatePost(ctx, arg)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
 		return
