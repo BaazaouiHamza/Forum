@@ -1,20 +1,39 @@
 package api
 
 import (
+	"fmt"
+
 	"github.com/gin-gonic/gin"
 	db "github.com/hamza-baazaoui/forum/db/sqlc"
+	"github.com/hamza-baazaoui/forum/token"
+	"github.com/hamza-baazaoui/forum/util"
 )
 
 type Server struct {
-	store  db.Store
-	router *gin.Engine
+	config     util.Config
+	store      db.Store
+	tokenMaker token.Maker
+	router     *gin.Engine
 }
 
-func NewServer(db db.Store) *Server {
-	server := &Server{store: db}
+func NewServer(config util.Config, db db.Store) (*Server, error) {
+	tokenMaker, err := token.NewJwt(config.TokenSymetricKey)
+	if err != nil {
+		return nil, fmt.Errorf("cannot create token maker: %w", err)
+	}
+	server := &Server{
+		config:     config,
+		store:      db,
+		tokenMaker: tokenMaker,
+	}
+	server.setUpRouter()
+	return server, nil
+}
+func (server *Server) setUpRouter() {
 	router := gin.Default()
 
 	router.POST("/users", server.createUser)
+	router.POST("/users/login", server.loginUser)
 
 	router.POST("/posts", server.createPost)
 	router.PATCH("/posts/:id", server.updatePost)
@@ -23,7 +42,6 @@ func NewServer(db db.Store) *Server {
 	router.DELETE("/posts/:id", server.deletePost)
 
 	server.router = router
-	return server
 }
 
 //Start runs the HTTP server on a specific address.
