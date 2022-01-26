@@ -2,14 +2,15 @@ package api
 
 import (
 	"database/sql"
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 	db "github.com/hamza-baazaoui/forum/db/sqlc"
+	"github.com/hamza-baazaoui/forum/token"
 )
 
 type createPostRequest struct {
-	Creator     string `json:"creator"`
 	Title       string `json:"title" binding:"required,min=6"`
 	Description string `json:"description" binding:"required"`
 	Image       string `json:"image" binding:"required"`
@@ -22,9 +23,9 @@ func (server *Server) createPost(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, errorResponse(err))
 		return
 	}
-
+	authPayload := ctx.MustGet(authorizationPayloadKey).(*token.Payload)
 	arg := db.CreatePostParams{
-		Creator:     req.Creator,
+		Creator:     authPayload.Username,
 		Title:       req.Title,
 		Description: req.Description,
 		Image:       req.Image,
@@ -100,12 +101,27 @@ type deletePostRquest struct {
 
 func (server *Server) deletePost(ctx *gin.Context) {
 	var req deletePostRquest
+	authPayload := ctx.MustGet(authorizationPayloadKey).(*token.Payload)
 	if err := ctx.BindUri(&req); err != nil {
 		ctx.JSON(http.StatusBadRequest, errorResponse(err))
 		return
 	}
+	post, err := server.store.GetPost(ctx, req.ID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			ctx.JSON(http.StatusNotFound, errorResponse(err))
+			return
+		}
+		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
+		return
+	}
+	if post.Creator != authPayload.Username {
+		err := errors.New("youre not the owner of this post")
+		ctx.JSON(http.StatusUnauthorized, errorResponse(err))
+		return
+	}
 
-	err := server.store.DeletePost(ctx, req.ID)
+	err = server.store.DeletePost(ctx, req.ID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			ctx.JSON(http.StatusNotFound, errorResponse(err))
@@ -134,6 +150,7 @@ type updatePostRequestUri struct {
 func (server *Server) updatePost(ctx *gin.Context) {
 	var reqBody updatePostRequestBody
 	var reqUri updatePostRequestUri
+	authPayload := ctx.MustGet(authorizationPayloadKey).(*token.Payload)
 	if err := ctx.BindUri(&reqUri); err != nil {
 		ctx.JSON(http.StatusBadRequest, errorResponse(err))
 		return
@@ -149,7 +166,23 @@ func (server *Server) updatePost(ctx *gin.Context) {
 		Description: reqBody.Description,
 		Image:       reqBody.Image,
 	}
-	post, err := server.store.UpdatePost(ctx, arg)
+
+	post, err := server.store.GetPost(ctx, reqUri.ID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			ctx.JSON(http.StatusNotFound, errorResponse(err))
+			return
+		}
+		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
+		return
+	}
+	if post.Creator != authPayload.Username {
+		err := errors.New("youre not the owner of this post")
+		ctx.JSON(http.StatusUnauthorized, errorResponse(err))
+		return
+	}
+
+	post, err = server.store.UpdatePost(ctx, arg)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
 		return
